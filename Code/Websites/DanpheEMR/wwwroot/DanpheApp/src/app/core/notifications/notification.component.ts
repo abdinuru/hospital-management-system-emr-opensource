@@ -1,4 +1,5 @@
-﻿import { Component, OnInit } from "@angular/core";
+import { SecurityService } from "../../security/shared/security.service";
+import { Component, OnInit } from "@angular/core";
 import { RouterOutlet, RouterModule, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MessageboxService } from '../../shared/messagebox/messagebox.service';
@@ -37,7 +38,8 @@ export class NotificationComponent {
         public CoreService: CoreService,
         public visitService: VisitService,
         public router: Router,
-        public routeFromService: RouteFromService) {
+        public routeFromService: RouteFromService,
+        public securityService: SecurityService) {
 
     }
 
@@ -121,6 +123,10 @@ export class NotificationComponent {
         if (currtNotification.Notification_ModuleName == "Visits_Module" && currtNotification.Sub_ModuleName == "Appointment") {
             this.GetNotificationVisitDetail(currtNotification.NotificationId);
         }
+        else if (currtNotification.Sub_ModuleName === "InpatientCare") {
+            this.GetNotificationVisitDetail(currtNotification.NotificationId,
+                this.securityService.HasPermission("nursing-ip-summary-view") ? "/Nursing/PatientOverviewMain/PatientOverview" : "/Doctors/PatientOverviewMain/PatientOverview");
+        }
         //write if we need to redirect to some other page here.
         else if (currtNotification.Notification_ModuleName == "Labs_Module" && currtNotification.Sub_ModuleName == "Lab-SampleCollection") {
             this.router.navigate(['/Lab/Requisition']);
@@ -137,11 +143,11 @@ export class NotificationComponent {
 
     }
 
-    GetNotificationVisitDetail(noitificationId: number) {
+    GetNotificationVisitDetail(noitificationId: number, targetRoute: string = "/Doctors/PatientOverviewMain/PatientOverview") {
         this.notificationblserv.GetNotificationVisitDetail(noitificationId)
             .subscribe(
                 res => {
-                    if (res.Status == "OK") {
+                    if (res.Status == "OK" && res.Results) {
 
                         //Ashim: 5thApril2018 - workaround since feature is not available in Angular 4
                         //should use onSameUrlNavigation feature once upgraded to Angular 5
@@ -150,7 +156,7 @@ export class NotificationComponent {
                             this.visitService.getGlobal().PatientId = res.Results.PatientId;
                             this.visitService.getGlobal().PatientVisitId = res.Results.PatientVisitId;
                             this.visitService.getGlobal().PerformerId = res.Results.PerformerId;
-                            this.router.navigate(["/Doctors/PatientOverviewMain/PatientOverview"])
+                            this.router.navigate([targetRoute])
                         });
 
                     }

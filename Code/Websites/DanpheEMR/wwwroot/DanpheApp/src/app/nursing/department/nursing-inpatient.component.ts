@@ -32,6 +32,7 @@ import { NursingDLService } from "../shared/nursing.dl.service";
 @Component({
   selector: "nursing-inpatient",
   templateUrl: "./nursing-inpatient.html",
+  styleUrls: ["./nursing-workspace.css"],
   styles: [
     `
       .mar-30-bt {
@@ -42,6 +43,159 @@ import { NursingDLService } from "../shared/nursing.dl.service";
   host: { '(window:keydown)': 'hotkeys($event)' }
 })
 export class NursingInPatientComponent {
+  public careBoard = true;
+  public careSearch = "";
+  public careFilter = "all";
+  public careSort = "priority";
+  public careSummary: any[] = [];
+  public careSummaryAvailable = false;
+  public careSelected: any = null;
+  public careTimeline: any[] = [];
+  public careLoading = false;
+  public careSaving = false;
+  public careError = "";
+  public careKind = "Task";
+  public careCategory = "Observation";
+  public carePriority = "Routine";
+  public careBody = "";
+  public careDue = "";
+  public careReplyToId = 0;
+  public careTab = "all";
+  public careLastRefresh: Date = null;
+  private careRequest = 0;
+  private carePreviousFocus: HTMLElement = null;
+  public careSbar = { situation: "", background: "", assessment: "", recommendation: "" };
+
+  public get carePatients(): any[] {
+    const query = this.careSearch.toLowerCase().trim();
+    const source = this.showFavPatGrid ? this.FavoritePatients : this.ipdList;
+    return (source || []).filter((p: any) => {
+      const bed = p.BedInformation || {};
+      const summary = this.CareSummary(p);
+      return (!query || [p.Name,p.PatientCode,p.VisitCode,p.AdmittingDoctorName,bed.BedCode,bed.BedNumber]
+        .join(" ").toLowerCase().indexOf(query) >= 0) &&
+        (this.careFilter === "all" || (this.careFilter === "overdue" && summary.OverdueTasks > 0) ||
+         (this.careFilter === "risk" && summary.ActiveRisks > 0) ||
+         (this.careFilter === "urgent" && summary.UrgentMessages > 0) ||
+         (this.careFilter === "receive" && this.CareNeedsReceive(p)));
+    }).sort((a: any,b: any) => this.careSort === "bed"
+      ? String((a.BedInformation || {}).BedCode || "").localeCompare(String((b.BedInformation || {}).BedCode || ""),undefined,{numeric:true})
+      : this.CareRank(b)-this.CareRank(a) || String(a.Name).localeCompare(String(b.Name)));
+  }
+  public CareSummary(p: any): any {
+    return this.careSummary.find(s => s.PatientVisitId === p.PatientVisitId) ||
+      {OpenTasks:0,OverdueTasks:0,ActiveRisks:0,UrgentMessages:0};
+  }
+  public CareRank(p: any): number {
+    const s = this.CareSummary(p);
+    return s.UrgentMessages*1000+s.OverdueTasks*100+s.ActiveRisks*10+(this.CareNeedsReceive(p)?1:0);
+  }
+  public CareNeedsReceive(p: any): boolean {
+    const b = p.BedInformation || {};
+    return this.IsReceiveFeatureEnabled && !b.ReceivedBy &&
+      (b.Action === "admission" || (b.Action === "transfer" && b.BedOnHoldEnabled));
+  }
+  public CareCount(field: string): number {
+    return this.carePatients.reduce((total,p) => total+Number(this.CareSummary(p)[field] || 0),0);
+  }
+  public CareDays(p: any): string {
+    const d = moment(p.AdmittedDate);
+    return d.isValid() ? String(Math.max(0,moment().diff(d,"days"))) : "—";
+  }
+  public CareTrack(index: number,p: any): number { return p.PatientVisitId; }
+  public CareAction(action: string,p: any): void {
+    this.NurIPDListGridActions({Action:action,Data:p} as GridEmitModel);
+  }
+  public CareClinicalPage(page: string,p: any): void {
+    this.SetPatDataToGlobal(p);
+    this.routeFromSrv.RouteFrom="nursing";
+    this.router.navigate(["/Nursing/PatientOverviewMain/"+page]);
+  }
+  public CareMyPatients(enabled: boolean): void {
+    if(enabled) this.showFavorites(); else this.showAllPatients();
+    try { localStorage.setItem("nursing-care-mine-"+this.securityService.GetLoggedInUser().EmployeeId,String(enabled)); } catch(e) { }
+  }
+  public LoadCareSummary(): void {
+    this.nursingDLService.http.get<any>("/api/InpatientCare/WardSummary?wardId="+this.securityService.getActiveWard().WardId)
+      .subscribe(res => { this.careSummaryAvailable = res.Status === "OK";
+        if(this.careSummaryAvailable) { this.careSummary=res.Results || []; this.careLastRefresh=new Date(); }
+      }, () => { this.careSummaryAvailable=false; });
+  }
+  public OpenCare(p: any): void {
+    if(this.careSaving) return;
+    this.carePreviousFocus=document.activeElement as HTMLElement;
+    setTimeout(() => { const close=document.getElementById("care-close"); if(close) close.focus(); },0);
+    this.careSelected=p; this.careBody=""; this.careDue=""; this.careReplyToId=0;
+    this.careSbar={situation:"",background:"",assessment:"",recommendation:""};
+    this.careError=""; this.careTab="all"; this.LoadCareTimeline();
+  }
+  public CloseCare(): void {
+    if(this.careSaving) return;
+    this.careSelected=null; this.careRequest++; this.careTimeline=[];
+    if(this.carePreviousFocus) this.carePreviousFocus.focus();
+  }
+  public CareKeydown(event: KeyboardEvent): void {
+    if(event.key!=="Tab") return;
+    const panel=document.getElementById("care-dialog");
+    if(!panel) return;
+    const controls=panel.querySelectorAll<HTMLElement>('button:not([disabled]),input,select,textarea,a[href]');
+    if(!controls.length) return;
+    const first=controls[0],last=controls[controls.length-1];
+    if(event.shiftKey && document.activeElement===first) {event.preventDefault();last.focus();}
+    else if(!event.shiftKey && document.activeElement===last) {event.preventDefault();first.focus();}
+  }
+  public LoadCareTimeline(): void {
+    if(!this.careSelected) return;
+    const request=++this.careRequest;
+    this.careLoading=true; this.careError=""; this.careTimeline=[];
+    this.nursingDLService.http.get<any>("/api/InpatientCare/Timeline?patientVisitId="+this.careSelected.PatientVisitId+
+      "&wardId="+this.securityService.getActiveWard().WardId).subscribe(res => {
+        if(request!==this.careRequest) return;
+        this.careLoading=false;
+        if(res.Status==="OK") this.careTimeline=res.Results || [];
+        else this.careError="Cannot load care records. Check that the workspace database setup is installed and you have access.";
+      }, () => { if(request===this.careRequest) {this.careLoading=false;this.careError="Unable to load care records. Retry.";} });
+  }
+  public get careVisibleTimeline(): any[] {
+    return this.careTimeline.filter(e => this.careTab === "all" || e.Kind===this.careTab);
+  }
+  public CareOverdue(e: any): boolean { return !e.ClosedOn && e.Kind==="Task" && e.DueOn && moment(e.DueOn).isBefore(moment()); }
+  public CareCanClose(e: any): boolean {
+    return !e.ClosedOn && (e.Kind==="Message" ? e.RecipientId===this.securityService.GetLoggedInUser().EmployeeId : e.Kind==="Task" || e.Kind==="Risk");
+  }
+  public SaveCare(): void {
+    if(!this.careSelected || this.careSaving || this.careLoading || this.careError) return;
+    const body=this.careKind==="Message" ? "Situation: "+this.careSbar.situation+"\nBackground: "+this.careSbar.background+
+      "\nAssessment: "+this.careSbar.assessment+"\nRecommendation: "+this.careSbar.recommendation : this.careBody;
+    if(!(this.careKind==="Message" ? this.careSbar.situation.trim() && this.careSbar.recommendation.trim() : body.trim())) {
+      this.msgBoxServ.showMessage("notice",["Enter care details, or a situation and requested action for the doctor."]); return;
+    }
+    if(body.length>4000) {this.msgBoxServ.showMessage("notice",["Keep the record within 4000 characters."]);return;}
+    if(this.careKind==="Task" && this.careDue && !moment(this.careDue).isValid()) return;
+    this.PostCare("Record",{PatientVisitId:this.careSelected.PatientVisitId,WardId:this.securityService.getActiveWard().WardId,
+      Kind:this.careKind,Category:this.careKind==="Message"?"SBAR":this.careCategory,Priority:this.carePriority,
+      Body:body,DueOn:this.careKind==="Task" && this.careDue ? this.careDue : null,ReplyToId:this.careReplyToId});
+  }
+  public CloseCareEvent(e: any): void {
+    if(this.careSaving || !this.CareCanClose(e)) return;
+    this.PostCare("Close",{CareEventId:e.CareEventId,PatientVisitId:this.careSelected.PatientVisitId,
+      WardId:this.securityService.getActiveWard().WardId});
+  }
+  private PostCare(path: string,body: any): void {
+    this.careSaving=true;
+    this.nursingDLService.http.post<any>("/api/InpatientCare/"+path,body,this.nursingDLService.jsonOptions).subscribe(res => {
+      this.careSaving=false;
+      if(res.Status==="OK") {
+        this.careBody="";this.careDue="";this.careReplyToId=0;
+        this.careSbar={situation:"",background:"",assessment:"",recommendation:""};
+        this.LoadCareTimeline();this.LoadCareSummary();
+        this.msgBoxServ.showMessage("success",[path==="Close"?"Record updated.":"Saved to the patient care timeline."]);
+      } else this.msgBoxServ.showMessage("error",["Not saved. "+(res.ErrorMessage || "Refresh and try again.")]);
+    }, () => {this.careSaving=false;this.msgBoxServ.showMessage("error",["Save failed. Refresh the timeline before retrying to avoid duplicates."]);});
+  }
+  public ReplyCare(e: any): void {
+    this.careKind="Message";this.careReplyToId=e.CareEventId;this.careSbar.situation="Reply to message #"+e.CareEventId+": ";
+  }
   public Timer: any;
   public ipdList = [];
   nurIPDGridColumnSettings: Array<any> = null;
@@ -71,7 +225,7 @@ export class NursingInPatientComponent {
   public showWardBilling: boolean = false;
   public FavoritePatients: Array<InPatientVM> = new Array<InPatientVM>();
   public FavoritePatientIds: Array<number> = new Array<number>();
-  public FilteredIDPPatientGridData: Array<InPatientVM> = null;
+  public FilteredIDPPatientGridData: Array<InPatientVM> = [];
   public InitialFavPatient: number = null;
 
   public selectedBedInfo: {
@@ -106,7 +260,7 @@ export class NursingInPatientComponent {
   public showReceiveNote: boolean = false;
 
   public showFavPatGrid: boolean = false;
-  public showAllPatGrid: boolean = false;
+  public showAllPatGrid: boolean = true;
   public hasFav: boolean = false;
   public showDietSheet: boolean = false;
   public SelectedDepartmentId: number = 0;
@@ -161,6 +315,10 @@ export class NursingInPatientComponent {
 
     this.nurFavPatGidColumnSettings = this.nursingGridCol.NurFavPatList;
 
+    try {
+      this.showFavPatGrid=localStorage.getItem("nursing-care-mine-"+this.securityService.GetLoggedInUser().EmployeeId)==="true";
+      this.showAllPatGrid=!this.showFavPatGrid;
+    } catch(e) { }
     this.LoadIPDList(this.searchText);
     //this.GetFavoritesList();
     this.Timer = setInterval(() => {
@@ -177,6 +335,7 @@ export class NursingInPatientComponent {
   }
   ngOnDestroy() {
     clearInterval(this.Timer);
+    this.careRequest++;
   }
   serverSearchTxt(searchTxt) {
     this.searchText = searchTxt;
@@ -196,66 +355,13 @@ export class NursingInPatientComponent {
   }
   //today's all visit or all visits with IsVisitContinued status as false
   LoadIPDList(searchText): void {
-    this.showInPatGrid = false;
     var wardId = this.securityService.getActiveWard().WardId;
-    let allPat = document.getElementById('all');
-    let diet = document.getElementById('diet');
-    let favPat = document.getElementById('fav');
-    this.nursingBLService
-      .GetAdmittedList(this.fromDate, this.toDate, searchText, wardId)
-      .subscribe((res) => {
-        if (res.Status == "OK") {
-          if (this.showPoliceCase == true) {
-            this.ipdList = res.Results.filter(ip => ip.IsPoliceCase == true);
-          } else {
-            this.ipdList = res.Results;
-          }
-          //this.ipdList = res.Results;
-          this.admissionBLService.GetNursingEmployeeFavorites().subscribe((res) => {
-            if (res.Status == "OK" && res.Results != null) {
-              this.FavoritePatientIds = res.Results;
-              for (var i = 0; i < this.FavoritePatientIds.length; i++) {
-
-                if (this.showPoliceCase == true) {
-                  var favpat = this.FavoritePatients.concat(
-                    this.ipdList.filter(
-                      (a) => a.PatientVisitId == this.FavoritePatientIds[i]
-                    )
-                  );
-                  this.FavoritePatients = favpat.filter(a => a.IsPoliceCase == true);
-                } else {
-                  this.FavoritePatients = this.FavoritePatients.concat(
-                    this.ipdList.filter(
-                      (a) => a.PatientVisitId == this.FavoritePatientIds[i]
-                    )
-                  );
-                }
-
-              }
-              if (this.FavoritePatients) {
-                this.hasFav = true;
-              }
-              if ((allPat == null) && (this.FavoritePatients.length > 0)) {
-                this.showFavorites();
-              }
-              else if (allPat && allPat.classList.contains('active')) {
-                this.showAllPatients();
-              } else if (favPat && favPat.classList.contains('active')) {
-                this.showFavorites();
-              } else if (allPat == null && favPat == null && !this.FavoritePatients) {
-                this.showAllPatients();
-              }
-            }
-          });
-          if (allPat == null && favPat == null) {
-            this.showAllPatients();
-          }
-          this.GetFavoritesList();
-          this.showInPatGrid = true;
-        } else {
-          this.msgBoxServ.showMessage("failed", [res.ErrorMessage]);
-        }
-      });
+    this.nursingBLService.GetAdmittedList(this.fromDate,this.toDate,searchText,wardId).subscribe(res => {
+      if(res.Status === "OK") {
+        this.ipdList=(res.Results || []).filter(p => !this.showPoliceCase || p.IsPoliceCase);
+        this.GetFavoritesList(); this.showInPatGrid=true; this.LoadCareSummary();
+      } else this.msgBoxServ.showMessage("error",["Unable to refresh admitted patients."]);
+    }, () => this.msgBoxServ.showMessage("error",["Patient refresh failed; displayed data may be out of date."]));
   }
 
   LoadFavPatList(searchText): void {
@@ -270,6 +376,7 @@ export class NursingInPatientComponent {
           if (res.Results != null) {
             this.FavoritePatientIds = res.Results;
             this.FavoritePatients = [];
+            this.ipdList.forEach(p => p.IsFavorite=false);
             for (var i = 0; i < this.FavoritePatientIds.length; i++) {
 
               this.FavoritePatients = this.FavoritePatients.concat(
@@ -500,7 +607,7 @@ export class NursingInPatientComponent {
     currPatient.PatientId = data.PatientId;
     currPatient.PatientCode = data.PatientCode;
     currPatient.Address = data.Address;
-    currPatient.VisitType = data.VisitType;
+    currPatient.VisitType = "inpatient";
     currPatient.PatientVisitId = data.PatientVisitId;
     currPatient.Age = data.Age;
     currPatient.AdmittedDate = data.AdmittedDate;
