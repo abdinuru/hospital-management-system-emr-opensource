@@ -1,4 +1,3 @@
-import { InpatientCareMessagesComponent } from "./inpatient-care-messages/inpatient-care-messages.component";
 import { CommonModule } from "@angular/common";
 import { NgModule } from "@angular/core";
 import { FormsModule, ReactiveFormsModule } from "@angular/forms";
@@ -253,7 +252,6 @@ import { authInterceptorProviders } from "./token-interceptor/token-interceptor.
 
   ],
   declarations: [
-    InpatientCareMessagesComponent,
     DanpheDateTime,
     HasValuePipe,
     LoadingComponent,
@@ -377,7 +375,6 @@ import { authInterceptorProviders } from "./token-interceptor/token-interceptor.
     HibLiveClaimComponent
   ],
   exports: [
-    InpatientCareMessagesComponent,
     DanpheDateTime,
     CommonModule,
     FormsModule,

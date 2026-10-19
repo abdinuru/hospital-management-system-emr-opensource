@@ -82,110 +82,10 @@
     </span>
   </div>
 </div>
-<section class="care-workspace" *ngIf="showAllPatGrid || showFavPatGrid">
-  <header class="care-heading"><div><span class="care-eyebrow">WARD NURSING</span><h2>Inpatient care</h2>
-    <p>{{securityService.getActiveWard().WardName}} · Patient care, shift work and doctor communication</p></div>
-    <button type="button" class="care-button" (click)="LoadIPDList(searchText)"><i class="fa fa-refresh"></i> Refresh</button>
-  </header>
-  <div class="care-stats" aria-label="Current filtered patient summary">
-    <div><strong>{{carePatients.length}}</strong><span>Patients in view</span></div>
-    <div><strong>{{careSummaryAvailable ? CareCount('OpenTasks') : '—'}}</strong><span>Open care tasks</span></div>
-    <div class="care-warning"><strong>{{careSummaryAvailable ? CareCount('OverdueTasks') : '—'}}</strong><span>Overdue tasks</span></div>
-    <div><strong>{{careSummaryAvailable ? CareCount('ActiveRisks') : '—'}}</strong><span>Documented risk flags</span></div>
-  </div>
-  <div class="care-toolbar">
-    <label class="care-search">Find a patient<input type="search" [(ngModel)]="careSearch" placeholder="Name, hospital / IP number, bed or doctor"></label>
-    <label>Show<select [(ngModel)]="careFilter"><option value="all">All patients</option><option value="overdue">Overdue care tasks</option><option value="risk">Documented risks</option><option value="urgent">Urgent messages awaiting acknowledgement</option><option value="receive">Awaiting reception</option></select></label>
-    <label>Sort<select [(ngModel)]="careSort"><option value="priority">Care priority</option><option value="bed">Bed number</option></select></label>
-    <label class="care-check"><input type="checkbox" [ngModel]="showFavPatGrid" (ngModelChange)="CareMyPatients($event)"> My patients only</label>
-    <button type="button" class="care-button" (click)="careBoard=!careBoard">{{careBoard ? 'Table view' : 'Card view'}}</button>
-  </div>
-  <p class="care-muted">My patients uses your saved heart list; it is an optional personal filter, not a staff assignment or access restriction.
-    <span *ngIf="careLastRefresh">Care counts updated {{careLastRefresh | date:'shortTime'}}.</span></p>
-  <p class="care-notice" *ngIf="!careSummaryAvailable">Care task counts are unavailable. Existing patient charts and nursing actions remain available.</p>
-  <div class="care-cards" *ngIf="careBoard">
-    <article class="care-card" *ngFor="let p of carePatients; trackBy: CareTrack" [class.care-card-alert]="CareSummary(p).OverdueTasks || CareSummary(p).UrgentMessages">
-      <div class="care-card-top"><span class="care-bed">Bed {{p.BedInformation?.BedCode || 'Not recorded'}}</span>
-        <button type="button" class="care-heart" [attr.aria-pressed]="p.IsFavorite" [disabled]="addFavLoading || removeFavLoading"
-          (click)="CareAction(p.IsFavorite ? 'removefavorite' : 'addfavorite',p)" [attr.aria-label]="p.IsFavorite ? 'Remove from my patients' : 'Add to my patients'">
-          <i class="fa" [class.fa-heart]="p.IsFavorite" [class.fa-heart-o]="!p.IsFavorite"></i></button></div>
-      <h3>{{p.Name}}</h3><p>{{p.PatientCode}} · {{p.Age}} {{p.Gender}} · IP {{p.VisitCode}}</p>
-      <p><strong>Doctor:</strong> {{p.AdmittingDoctorName || 'Not assigned'}}</p>
-      <p class="care-muted">Admitted {{p.AdmittedDate | date:'mediumDate'}} · {{CareDays(p)}} days · {{p.BedInformation?.BedFeature}}</p>
-      <div class="care-badges"><span *ngIf="CareNeedsReceive(p)">Awaiting reception</span>
-        <span *ngIf="CareSummary(p).OverdueTasks">{{CareSummary(p).OverdueTasks}} overdue</span>
-        <span *ngIf="CareSummary(p).ActiveRisks">{{CareSummary(p).ActiveRisks}} risk flags</span>
-        <span *ngIf="CareSummary(p).UrgentMessages">Urgent communication</span>
-        <span *ngIf="p.IsPoliceCase">Medico-legal case</span></div>
-      <div class="care-actions">
-        <button type="button" class="care-button care-primary" (click)="OpenCare(p)" *ngIf="securityService.HasPermission('nursing-ip-summary-view')">Care workspace</button>
-        <button type="button" class="care-button" (click)="CareAction('patient-overview',p)" *ngIf="securityService.HasPermission('nursing-ip-summary-view')">Patient chart</button>
-        <button type="button" class="care-button" (click)="CareAction('vitals',p)">Vitals</button>
-        <button type="button" class="care-button" (click)="CareClinicalPage('InvestigationResults',p)" *ngIf="securityService.HasPermission('nursing-ip-summary-view')">Results</button>
-        <button type="button" class="care-button" (click)="CareClinicalPage('Notes',p)" *ngIf="securityService.HasPermission('nursing-ip-summary-view')">Nursing notes</button>
-        <button type="button" class="care-button" (click)="CareClinicalPage('DrugsRequest',p)">Drug request</button>
-        <button type="button" class="care-button" (click)="CareAction('orders',p)" *ngIf="securityService.HasPermission('nursing-ip-wardbilling-view')">Ward request</button>
-        <button type="button" class="care-button" (click)="CareAction('consumption',p)">Consumption</button>
-        <button type="button" class="care-button" (click)="CareAction('transfer',p)" *ngIf="securityService.HasPermission('nursing-transfer-view')">Transfer</button>
-        <button type="button" class="care-button" (click)="CareAction('receive',p)" *ngIf="CareNeedsReceive(p) && securityService.HasPermission('nursing-receive-transferred-patient')">Receive patient</button>
-      </div>
-    </article>
-    <div class="care-empty" *ngIf="!carePatients.length">No patients match this view. Clear filters or switch off “My patients only”. Add patients with the heart button from All Patients.</div>
-  </div>
-</section>
-<div class="care-overlay" *ngIf="careSelected" id="care-dialog" role="dialog" aria-modal="true" (keydown)="CareKeydown($event)" aria-labelledby="care-title" (keydown.escape)="CloseCare()">
-  <section class="care-panel">
-    <header class="care-heading"><div><h2 id="care-title">{{careSelected.Name}}</h2><p>{{careSelected.PatientCode}} · IP {{careSelected.VisitCode}} · Bed {{careSelected.BedInformation?.BedCode}}</p>
-      <p>Doctor in charge: {{careSelected.AdmittingDoctorName || 'Not assigned'}}</p></div>
-      <button type="button" class="care-button" id="care-close" (click)="CloseCare()" [disabled]="careSaving">Close</button></header>
-    <div class="care-notice">For an emergency, use the hospital emergency call process immediately. A saved message does not confirm that the doctor has seen it.</div>
-    <p *ngIf="careLoading" role="status">Loading care timeline…</p><p *ngIf="careError" role="alert">{{careError}} <button (click)="LoadCareTimeline()" type="button">Retry</button></p>
-    <div class="care-detail-columns">
-      <form (ngSubmit)="SaveCare()" class="care-entry">
-        <h3>Add to care record</h3>
-        <label>Record type<select name="careKind" [(ngModel)]="careKind"><option>Task</option><option>Handover</option><option>Message</option><option>Risk</option></select></label>
-        <label *ngIf="careKind!=='Message'">Category<select name="careCategory" [(ngModel)]="careCategory">
-          <option>Observation</option><option>Medication follow-up</option><option>Intake / output</option><option>Pain reassessment</option>
-          <option>Wound / dressing</option><option>IV line / catheter</option><option>Nutrition / feeding</option><option>Mobility / turning</option>
-          <option>Fall prevention</option><option>Pressure injury prevention</option><option>Isolation / infection prevention</option>
-          <option>Investigation follow-up</option><option>Patient education</option><option>Discharge preparation</option><option>Shift handover</option><option>Other</option>
-        </select></label>
-        <label>Priority<select name="carePriority" [(ngModel)]="carePriority"><option>Routine</option><option>Urgent</option></select></label>
-        <ng-container *ngIf="careKind==='Message'">
-          <p>SBAR message to {{careSelected.AdmittingDoctorName || 'unassigned doctor'}}. A notification and timeline record are saved together.</p>
-          <label>Situation *<textarea name="situation" [(ngModel)]="careSbar.situation" maxlength="1000" required placeholder="What is happening now?"></textarea></label>
-          <label>Background<textarea name="background" [(ngModel)]="careSbar.background" maxlength="900" placeholder="Relevant admission history and treatment"></textarea></label>
-          <label>Assessment<textarea name="assessment" [(ngModel)]="careSbar.assessment" maxlength="900" placeholder="Observed findings, vitals and concerns"></textarea></label>
-          <label>Recommendation / request *<textarea name="recommendation" [(ngModel)]="careSbar.recommendation" maxlength="900" required placeholder="What review or action is needed?"></textarea></label>
-        </ng-container>
-        <label *ngIf="careKind!=='Message'">{{careKind==='Handover' ? 'Situation, risks, outstanding work and next-shift plan' : 'Details'}} *
-          <textarea name="careBody" [(ngModel)]="careBody" maxlength="4000" rows="6" required></textarea></label>
-        <label *ngIf="careKind==='Task'">Due (ward local time)<input type="datetime-local" name="careDue" [(ngModel)]="careDue"></label>
-        <p class="care-muted">Tasks are reminders. Record administered medicines, observations and procedures in their clinical chart; completing a task does not update those records.</p>
-        <button type="submit" class="care-button care-primary" [disabled]="careSaving || careLoading || !!careError">{{careSaving ? 'Saving…' : 'Save record'}}</button>
-      </form>
-      <section class="care-timeline"><h3>Care timeline</h3>
-        <label>Show records<select [(ngModel)]="careTab"><option value="all">All records</option><option>Task</option><option>Handover</option><option>Message</option><option>Risk</option></select></label>
-        <button type="button" class="care-button" (click)="LoadCareTimeline()" [disabled]="careSaving">Refresh timeline</button>
-        <article *ngFor="let e of careVisibleTimeline" class="care-event" [class.care-overdue]="CareOverdue(e)">
-          <div class="care-badges"><span>{{e.Kind}}</span><span>{{e.Priority}}</span><span *ngIf="CareOverdue(e)">Overdue</span></div>
-          <strong>{{e.Category}}</strong><p class="care-event-body">{{e.Body}}</p>
-          <p *ngIf="e.DueOn">Due {{e.DueOn | date:'medium'}}</p>
-          <small>{{e.CreatedByName}} · {{e.CreatedOn | date:'medium'}}</small>
-          <p *ngIf="e.ClosedOn">{{e.Kind==='Message' ? 'Acknowledged' : e.Kind==='Risk' ? 'Resolved' : 'Completed'}} {{e.ClosedOn | date:'medium'}} · Employee {{e.ClosedBy}}</p>
-          <p *ngIf="!e.ClosedOn && e.Kind==='Message'">Awaiting recipient acknowledgement</p>
-          <button type="button" class="care-button" *ngIf="CareCanClose(e)" (click)="CloseCareEvent(e)" [disabled]="careSaving">{{e.Kind==='Message' ? 'Acknowledge' : e.Kind==='Risk' ? 'Resolve risk' : 'Complete task'}}</button>
-        </article>
-        <p *ngIf="!careLoading && !careVisibleTimeline.length">No records in this view.</p>
-        <p class="care-muted" *ngIf="careTimeline.length===500">Showing the latest 500 records.</p>
-      </section>
-    </div>
-  </section>
-</div>
 <div class="clearfix"></div>
 <div class="row">
   <div class="col-md-12">
-    <danphe-grid *ngIf="showInPatGrid && showFavPatGrid && !careBoard" [grid-colDefaults]="nurFavPatGidColumnSettings" [grid-data]="carePatients"
+    <danphe-grid *ngIf="showInPatGrid && showFavPatGrid" [grid-colDefaults]="nurFavPatGidColumnSettings" [grid-data]="FavoritePatients"
                  [NepaliDateInGridParams]="NepaliDateInGridSettings" (grid-actions)="NurIPDListGridActions($event)">
     </danphe-grid>
   </div>
@@ -194,7 +94,7 @@
 
 <div class="row">
   <div class="col-md-12">
-    <danphe-grid *ngIf="showInPatGrid && showAllPatGrid && !careBoard" [grid-colDefaults]="nurIPDGridColumnSettings" [grid-data]="carePatients"
+    <danphe-grid *ngIf="showInPatGrid && showAllPatGrid" [grid-colDefaults]="nurIPDGridColumnSettings" [grid-data]="ipdList"
                  [NepaliDateInGridParams]="NepaliDateInGridSettings" (grid-actions)="NurIPDListGridActions($event)">
     </danphe-grid>
   </div>
