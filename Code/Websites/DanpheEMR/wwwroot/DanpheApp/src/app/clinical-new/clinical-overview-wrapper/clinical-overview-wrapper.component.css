@@ -1,0 +1,12 @@
+.pcw-banner { display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; padding:14px 18px; margin-bottom:12px; background:#fff; border:1px solid #dce4ec; border-radius:8px; }
+.pcw-identity { display:flex; align-items:center; gap:12px; flex:1 1 250px; min-width:0; }
+.pcw-avatar { width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:#e9f2fa; color:#28618c; font-size:20px; flex-shrink:0; }
+.pcw-identity h2 { margin:0 0 4px; font-size:18px; font-weight:600; overflow-wrap:anywhere; }
+.pcw-subtitle { color:#536779; font-size:12px; }
+.pcw-facts { display:flex; flex:2 1 480px; gap:12px; flex-wrap:wrap; }
+.pcw-facts > div { flex:1 1 110px; min-width:0; }
+.pcw-facts span { display:block; color:#536779; font-size:11px; margin-bottom:3px; }
+.pcw-facts strong { display:block; font-size:13px; overflow-wrap:anywhere; }
+.pcw-allergy { flex-basis:100%; padding:8px 10px; background:#fff7e6; color:#664600; border-left:3px solid #c58b00; font-size:12px; }
+.pcw-allergy-present { background:#fff0ef; color:#8a2420; border-left-color:#c13b34; }
+@media(max-width:768px){.pcw-banner{padding:12px}.pcw-facts>div{flex-basis:42%}}
