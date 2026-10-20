@@ -47,6 +47,27 @@
     }
 </style>
 
+<section class="pcw-banner" *ngIf="SelectedPatient && SelectedPatient.PatientId > 0" aria-label="Current patient and encounter">
+    <div class="pcw-identity">
+        <div class="pcw-avatar" aria-hidden="true"><span class="glyphicon glyphicon-user"></span></div>
+        <div>
+            <h2>{{ SelectedPatient.Name || SelectedPatient.FullName || 'Patient' }}</h2>
+            <div class="pcw-subtitle">ID: {{ SelectedPatient.PatientCode || SelectedPatient.PatientId }} <span *ngIf="SelectedPatient.Age"> · {{ SelectedPatient.Age }}</span><span *ngIf="SelectedPatient.Gender"> · {{ SelectedPatient.Gender }}</span></div>
+        </div>
+    </div>
+    <div class="pcw-facts">
+        <div><span>Encounter</span><strong>{{ SelectedPatient.VisitCode || SelectedPatient.PatientVisitId || 'Not selected' }}</strong></div>
+        <div><span>Visit type</span><strong>{{ SelectedPatient.VisitType || 'Not recorded' }}</strong></div>
+        <div><span>Ward / Bed</span><strong>{{ SelectedPatient.WardBed || SelectedPatient.WardName || 'Not assigned' }}</strong></div>
+        <div><span>Doctor</span><strong>{{ SelectedPatient.Doctor || SelectedPatient.AdmittingDoctorName || 'Not assigned' }}</strong></div>
+    </div>
+    <div class="pcw-allergy" [class.pcw-allergy-present]="SelectedPatient.Allergies && SelectedPatient.Allergies.length > 0">
+        <strong>Allergies:</strong>
+        <span *ngIf="SelectedPatient.Allergies && SelectedPatient.Allergies.length > 0">{{ SelectedPatient.AllergyFormatted.Primary || 'Recorded — review allergy chart' }}</span>
+        <span *ngIf="!SelectedPatient.Allergies || SelectedPatient.Allergies.length === 0">Status not confirmed — verify with patient</span>
+    </div>
+</section>
+
 <div class="container-Main" [ngClass]="{'fullscreen': IsMaximized}" style="margin: 0; padding:0;">
     <ul class="nav nav-tabs">
         <li *ngFor="let tab of MainTabsList" (click)="SelectTab(tab)" [class.active]="tab.IsActive">
